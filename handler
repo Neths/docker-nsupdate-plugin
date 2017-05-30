@@ -28,7 +28,7 @@ build_request() {
     request="$request -k $4 "
   fi
 
-  request="$request server $3"
+  request="\n$request server $3\n"
 
   if [ "$1" ]; then
     request="$request update delete $2 $6"
@@ -36,9 +36,9 @@ build_request() {
     request="$request update add $2 $7 $6 $5"
   fi
 
-  request="$request send"
+  request="\n$request send"
 
-  printf "%s" "$request"
+  echo "$request"
 }
 
 normalization() {
@@ -46,17 +46,17 @@ normalization() {
 }
 
 fields=(
-  "{{.Name}}"
-  "{{ index .Config.Labels \"nsupdate.enable\"}}"
-  "{{ index .Config.Labels \"nsupdate.domains\"}}"
-  "{{ index .Config.Labels \"nsupdate.target\"}}"
-  "{{ index .Config.Labels \"nsupdate.entrytype\"}}"
-  "{{ index .Config.Labels \"nsupdate.ttl\"}}"
+  '{{.Name}}'
+  '{{ index .Config.Labels "nsupdate.enable"}}'
+  '{{ index .Config.Labels "nsupdate.domains"}}'
+  '{{ index .Config.Labels "nsupdate.target"}}'
+  '{{ index .Config.Labels "nsupdate.entrytype"}}'
+  '{{ index .Config.Labels "nsupdate.ttl"}}'
 )
 format=$(IFS="|"; echo "${fields[*]}")
 
 handler() {
-  local filter=$1 event=$2 container=$3 info rawdomains domains target entrytype ttl
+  local filter=$1 event=$2 container=$3 info rawdomains domains target entrytype ttl result
   shift
 
   [[ $filter = "container" ]] || return 0
@@ -70,29 +70,35 @@ handler() {
       entrytype="${info[4]}"
       ttl="${info[5]}"
 
-      IFS=',' read -ra domains < "$rawdomains"
+      IFS=',' read -ra domains <<< "$rawdomains"
 
-      if [ "${info[1]}" ]
+      if [[ "${info[1]}" == "true" ]]
       then
         for d in $domains; do
-          config=( $(jq --arg test "$d" -r '.[] | select(.basehost | inside($test)) | .[]' "$config_file") )
+          config=( $(jq --arg test "$d" -r '.[] | select(.basehost | inside($test)) | .[]' /config.json) )
 
           case $event in
             start | exists)
-              echo "update CONTAINER: $name $d $target"
-              echo build_request false "$d" "${config[1]}" "${config[2]}" "$target" "$entrytype" "$ttl"
-              #cat < build_request "$dns"
+              echo "update CONTAINER: $container $d $target"
+              result=$(build_request false "$d" "${config[1]}" "${config[2]}" "$target" "$entrytype" "$ttl")
+#              echo $result
+              cat <<DATA
+$result
+DATA
               ;;
             die)
-              echo "delete CONTAINER: $name $d $target"
-              echo build_request true "$d" "${config[1]}" "${config[2]}" "$target" "$entrytype"
-              #cat < build_request "$dns" true
+              echo "delete CONTAINER: $container $d $target"
+              result=$(build_request true "$d" "${config[1]}" "${config[2]}" "$target" "$entrytype")
+#              echo $result
+              cat <<DATA
+$result
+DATA
               ;;
           esac
         done
       else
         echo "disabled nsupdate: $name"
-        exit 0  
+        exit 0
       fi
   esac
 }
