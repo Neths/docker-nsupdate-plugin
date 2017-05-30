@@ -1,0 +1,7 @@
+[
+    {
+        "basehost":"neths.fr",
+        "nameserver":"dns",
+        "keyfile":"/config/zones/Kneths.fr.+007+23075.key"
+    }
+]
